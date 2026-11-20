@@ -1,0 +1,14 @@
+.git
+node_modules
+**/node_modules
+.next
+**/.next
+coverage
+**/coverage
+graphify-out
+*.tsbuildinfo
+playwright-report
+test-results
+.env
+.env.*
+!.env.example

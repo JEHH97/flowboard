@@ -1,0 +1,36 @@
+name: CI
+on:
+  push:
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: flowboard
+          POSTGRES_PASSWORD: flowboard
+          POSTGRES_DB: flowboard_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U flowboard -d flowboard_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgres://flowboard:flowboard@localhost:5432/flowboard_test
+      JWT_SECRET: ci-access-secret-that-is-only-for-tests
+      REFRESH_TOKEN_SECRET: ci-refresh-secret-that-is-only-for-tests
+      WEB_ORIGIN: http://localhost:3000
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: scripts/in-dev npm ci
+      - run: scripts/in-dev npm run db:migrate --workspace @flowboard/api
+      - run: scripts/in-dev npm run check
