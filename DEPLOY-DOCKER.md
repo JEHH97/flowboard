@@ -23,7 +23,9 @@ unused `gosu` binary (the service runs as the `postgres` UID).
 ## Start with Compose
 
 Install Docker Engine and the Compose plugin. Copy the example environment file
-and edit every placeholder before starting the stack:
+and edit every placeholder before starting the stack. Run the commands below from
+the repository root; `deploy/.env` is the only environment file and is passed
+explicitly with `--env-file` (the Compose file does not read a root `.env`):
 
 ```sh
 cp deploy/.env.example deploy/.env

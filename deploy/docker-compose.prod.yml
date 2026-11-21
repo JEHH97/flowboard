@@ -34,12 +34,14 @@ services:
   api:
     image: ghcr.io/jehh97/flowboard-api:${FLOWBOARD_VERSION:-v1.0.1}
     restart: unless-stopped
-    env_file:
-      - .env
     environment:
       NODE_ENV: production
       PORT: 4000
       DATABASE_URL: postgres://${POSTGRES_USER:-flowboard}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in deploy/.env}@postgres:5432/${POSTGRES_DB:-flowboard}
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in deploy/.env}
+      REFRESH_TOKEN_SECRET: ${REFRESH_TOKEN_SECRET:?Set REFRESH_TOKEN_SECRET in deploy/.env}
+      WEB_ORIGIN: ${WEB_ORIGIN:?Set WEB_ORIGIN in deploy/.env}
+      DEMO_PASSWORD: ${DEMO_PASSWORD:?Set DEMO_PASSWORD in deploy/.env}
       RUN_SEED: ${RUN_SEED:-true}
     ports:
       - "${BIND_ADDRESS:-127.0.0.1}:${API_PORT:-4000}:4000"
