@@ -216,6 +216,198 @@ suite("API integration with PostgreSQL", () => {
     expect(denied.statusCode).toBe(403);
   }, 30000);
 
+  it("keeps cards and columns scoped to their URL board", async () => {
+    const register = async (email: string) => {
+      const response = await app.inject({
+        method: "POST",
+        url: "/auth/register",
+        payload: { email, password: "safe-test-password" },
+      });
+      expect(response.statusCode).toBe(201);
+      const rawCookies = response.headers["set-cookie"];
+      const authCookie = (
+        Array.isArray(rawCookies) ? rawCookies : rawCookies ? [rawCookies] : []
+      )
+        .map((value) => value.split(";")[0])
+        .join("; ");
+      return {
+        cookie: authCookie,
+        userId: (response.json() as { id: string }).id,
+      };
+    };
+    const createBoard = async (authCookie: string, name: string) => {
+      const response = await app.inject({
+        method: "POST",
+        url: "/boards",
+        headers: { cookie: authCookie },
+        payload: { name },
+      });
+      expect(response.statusCode).toBe(201);
+      return (response.json() as { id: string }).id;
+    };
+    const createColumn = async (
+      authCookie: string,
+      boardId: string,
+      name: string,
+    ) => {
+      const response = await app.inject({
+        method: "POST",
+        url: `/boards/${boardId}/columns`,
+        headers: { cookie: authCookie },
+        payload: { name },
+      });
+      expect(response.statusCode).toBe(201);
+      return (response.json() as { id: string }).id;
+    };
+    const createCard = async (
+      authCookie: string,
+      boardId: string,
+      columnId: string,
+      title: string,
+    ) => {
+      const response = await app.inject({
+        method: "POST",
+        url: `/boards/${boardId}/cards`,
+        headers: { cookie: authCookie },
+        payload: { title, columnId },
+      });
+      expect(response.statusCode).toBe(201);
+      return (response.json() as { id: string }).id;
+    };
+    const owner = await register(`owner-${crypto.randomUUID()}@flowboard.dev`);
+    const boardA = await createBoard(owner.cookie, "Board A");
+    const boardB = await createBoard(owner.cookie, "Board B");
+    const columnA = await createColumn(owner.cookie, boardA, "A column");
+    const columnB = await createColumn(owner.cookie, boardB, "B column");
+    const cardA = await createCard(owner.cookie, boardA, columnA, "Card A");
+    const cardB = await createCard(owner.cookie, boardB, columnB, "Card B");
+    const foreignColumnCardCreate = await app.inject({
+      method: "POST",
+      url: `/boards/${boardA}/cards`,
+      headers: { cookie: owner.cookie },
+      payload: { title: "Wrong board column", columnId: columnB },
+    });
+    expect(foreignColumnCardCreate.statusCode).toBe(404);
+
+    const foreignCardMove = await app.inject({
+      method: "PATCH",
+      url: `/boards/${boardA}/cards/${cardB}/move`,
+      headers: { cookie: owner.cookie },
+      payload: { columnId: columnA, order: 2048 },
+    });
+    expect(foreignCardMove.statusCode).toBe(404);
+    const foreignColumnMove = await app.inject({
+      method: "PATCH",
+      url: `/boards/${boardA}/cards/${cardA}/move`,
+      headers: { cookie: owner.cookie },
+      payload: { columnId: columnB, order: 2048 },
+    });
+    expect(foreignColumnMove.statusCode).toBe(404);
+
+    const foreignUpdate = await app.inject({
+      method: "PATCH",
+      url: `/boards/${boardA}/cards/${cardB}`,
+      headers: { cookie: owner.cookie },
+      payload: { title: "Changed through the wrong board" },
+    });
+    expect(foreignUpdate.statusCode).toBe(404);
+    const foreignDelete = await app.inject({
+      method: "DELETE",
+      url: `/boards/${boardA}/cards/${cardB}`,
+      headers: { cookie: owner.cookie },
+    });
+    expect(foreignDelete.statusCode).toBe(404);
+    const foreignColumnUpdate = await app.inject({
+      method: "PATCH",
+      url: `/boards/${boardA}/columns/${columnB}`,
+      headers: { cookie: owner.cookie },
+      payload: { name: "Changed through the wrong board" },
+    });
+    expect(foreignColumnUpdate.statusCode).toBe(404);
+    const foreignColumnDelete = await app.inject({
+      method: "DELETE",
+      url: `/boards/${boardA}/columns/${columnB}`,
+      headers: { cookie: owner.cookie },
+    });
+    expect(foreignColumnDelete.statusCode).toBe(404);
+
+    const noRole = await register(
+      `outsider-${crypto.randomUUID()}@flowboard.dev`,
+    );
+    const foreignAssigneeCardCreate = await app.inject({
+      method: "POST",
+      url: `/boards/${boardA}/cards`,
+      headers: { cookie: owner.cookie },
+      payload: {
+        title: "Wrong board assignee",
+        columnId: columnA,
+        assigneeId: noRole.userId,
+      },
+    });
+    expect(foreignAssigneeCardCreate.statusCode).toBe(404);
+    const outsiderMove = await app.inject({
+      method: "PATCH",
+      url: `/boards/${boardA}/cards/${cardA}/move`,
+      headers: { cookie: noRole.cookie },
+      payload: { columnId: columnA, order: 4096 },
+    });
+    expect(outsiderMove.statusCode).toBe(403);
+
+    const viewerEmail = `viewer-${crypto.randomUUID()}@flowboard.dev`;
+    const invite = await app.inject({
+      method: "POST",
+      url: `/boards/${boardA}/invites`,
+      headers: { cookie: owner.cookie },
+      payload: { email: viewerEmail, role: "viewer" },
+    });
+    expect(invite.statusCode).toBe(201);
+    const viewer = await register(viewerEmail);
+    const inviteUrl = (invite.json() as { inviteUrl: string }).inviteUrl;
+    const accept = await app.inject({
+      method: "POST",
+      url: `/invites/${inviteUrl.split("/").at(-1)}/accept`,
+      headers: { cookie: viewer.cookie },
+    });
+    expect(accept.statusCode).toBe(200);
+    const viewerMove = await app.inject({
+      method: "PATCH",
+      url: `/boards/${boardA}/cards/${cardA}/move`,
+      headers: { cookie: viewer.cookie },
+      payload: { columnId: columnA, order: 8192 },
+    });
+    expect(viewerMove.statusCode).toBe(403);
+
+    const readBoard = async (boardId: string) => {
+      const response = await app.inject({
+        method: "GET",
+        url: `/boards/${boardId}`,
+        headers: { cookie: owner.cookie },
+      });
+      expect(response.statusCode).toBe(200);
+      return response.json() as {
+        columns: Array<{
+          id: string;
+          name: string;
+          cards: Array<{ id: string; title: string; columnId: string }>;
+        }>;
+      };
+    };
+    const resultA = await readBoard(boardA);
+    const resultB = await readBoard(boardB);
+    expect(resultA.columns).toEqual([
+      expect.objectContaining({
+        id: columnA,
+        cards: [expect.objectContaining({ id: cardA, title: "Card A" })],
+      }),
+    ]);
+    expect(resultB.columns).toEqual([
+      expect.objectContaining({
+        id: columnB,
+        cards: [expect.objectContaining({ id: cardB, title: "Card B" })],
+      }),
+    ]);
+  }, 30000);
+
   it("updates a seeded user's password without creating a duplicate", async () => {
     const identity = `seed-${crypto.randomUUID()}@flowboard.dev`;
     try {

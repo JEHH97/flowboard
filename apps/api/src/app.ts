@@ -381,12 +381,18 @@ export async function buildApp(): Promise<FastifyInstance> {
         boardId: string;
         columnId: string;
       };
-      const parsed = updateColumnSchema.safeParse(request.body);
-      if (!parsed.success)
-        return reply.code(400).send({ error: "Invalid column update" });
       const userId = (request.user as { sub: string }).sub;
       if (!can(await getRole(userId, boardId), "update"))
         return reply.code(403).send({ error: "Board access denied" });
+      const [existing] = await db
+        .select({ id: columns.id })
+        .from(columns)
+        .where(and(eq(columns.id, columnId), eq(columns.boardId, boardId)))
+        .limit(1);
+      if (!existing) return reply.code(404).send({ error: "Column not found" });
+      const parsed = updateColumnSchema.safeParse(request.body);
+      if (!parsed.success)
+        return reply.code(400).send({ error: "Invalid column update" });
       const [updated] = await db
         .update(columns)
         .set(parsed.data)
@@ -426,6 +432,14 @@ export async function buildApp(): Promise<FastifyInstance> {
     const userId = (request.user as { sub: string }).sub;
     if (!can(await getRole(userId, boardId), "create"))
       return reply.code(403).send({ error: "Board access denied" });
+    const [column] = await db
+      .select()
+      .from(columns)
+      .where(
+        and(eq(columns.id, parsed.data.columnId), eq(columns.boardId, boardId)),
+      )
+      .limit(1);
+    if (!column) return reply.code(404).send({ error: "Column not found" });
     if (
       parsed.data.assigneeId &&
       !(
@@ -441,7 +455,7 @@ export async function buildApp(): Promise<FastifyInstance> {
           .limit(1)
       )[0]
     )
-      return reply.code(400).send({ error: "Assignee is not a board member" });
+      return reply.code(404).send({ error: "Assignee not found" });
     if (parsed.data.labels.length) {
       const found = await db
         .select({ name: boardLabels.name })
@@ -457,14 +471,6 @@ export async function buildApp(): Promise<FastifyInstance> {
           .code(400)
           .send({ error: "Card contains an unknown label" });
     }
-    const [column] = await db
-      .select()
-      .from(columns)
-      .where(
-        and(eq(columns.id, parsed.data.columnId), eq(columns.boardId, boardId)),
-      )
-      .limit(1);
-    if (!column) return reply.code(404).send({ error: "Column not found" });
     const [card] = await db
       .insert(cards)
       .values({
@@ -486,12 +492,19 @@ export async function buildApp(): Promise<FastifyInstance> {
         boardId: string;
         cardId: string;
       };
-      const parsed = updateCardSchema.safeParse(request.body);
-      if (!parsed.success)
-        return reply.code(400).send({ error: "Invalid card update" });
       const userId = (request.user as { sub: string }).sub;
       if (!can(await getRole(userId, boardId), "update"))
         return reply.code(403).send({ error: "Board access denied" });
+      const [existing] = await db
+        .select({ id: cards.id })
+        .from(cards)
+        .innerJoin(columns, eq(cards.columnId, columns.id))
+        .where(and(eq(cards.id, cardId), eq(columns.boardId, boardId)))
+        .limit(1);
+      if (!existing) return reply.code(404).send({ error: "Card not found" });
+      const parsed = updateCardSchema.safeParse(request.body);
+      if (!parsed.success)
+        return reply.code(400).send({ error: "Invalid card update" });
       if (
         parsed.data.assigneeId &&
         !(
@@ -507,9 +520,7 @@ export async function buildApp(): Promise<FastifyInstance> {
             .limit(1)
         )[0]
       )
-        return reply
-          .code(400)
-          .send({ error: "Assignee is not a board member" });
+        return reply.code(404).send({ error: "Assignee not found" });
       if (parsed.data.labels?.length) {
         const found = await db
           .select({ name: boardLabels.name })
@@ -525,13 +536,6 @@ export async function buildApp(): Promise<FastifyInstance> {
             .code(400)
             .send({ error: "Card contains an unknown label" });
       }
-      const [existing] = await db
-        .select({ id: cards.id })
-        .from(cards)
-        .innerJoin(columns, eq(cards.columnId, columns.id))
-        .where(and(eq(cards.id, cardId), eq(columns.boardId, boardId)))
-        .limit(1);
-      if (!existing) return reply.code(404).send({ error: "Card not found" });
       const { dueDate, ...patch } = parsed.data;
       const values = {
         ...patch,
@@ -543,8 +547,20 @@ export async function buildApp(): Promise<FastifyInstance> {
       const [updated] = await db
         .update(cards)
         .set(values)
-        .where(eq(cards.id, cardId))
+        .where(
+          and(
+            eq(cards.id, cardId),
+            inArray(
+              cards.columnId,
+              db
+                .select({ id: columns.id })
+                .from(columns)
+                .where(eq(columns.boardId, boardId)),
+            ),
+          ),
+        )
         .returning();
+      if (!updated) return reply.code(404).send({ error: "Card not found" });
       publish(boardId, { type: "card.updated", cardId, patch: parsed.data });
       return updated;
     },
@@ -568,7 +584,22 @@ export async function buildApp(): Promise<FastifyInstance> {
         .where(and(eq(cards.id, cardId), eq(columns.boardId, boardId)))
         .limit(1);
       if (!existing) return reply.code(404).send({ error: "Card not found" });
-      await db.delete(cards).where(eq(cards.id, cardId));
+      const [removed] = await db
+        .delete(cards)
+        .where(
+          and(
+            eq(cards.id, cardId),
+            inArray(
+              cards.columnId,
+              db
+                .select({ id: columns.id })
+                .from(columns)
+                .where(eq(columns.boardId, boardId)),
+            ),
+          ),
+        )
+        .returning({ id: cards.id });
+      if (!removed) return reply.code(404).send({ error: "Card not found" });
       publish(boardId, { type: "card.deleted", cardId });
       return reply.code(204).send();
     },
@@ -582,12 +613,19 @@ export async function buildApp(): Promise<FastifyInstance> {
         boardId: string;
         cardId: string;
       };
-      const parsed = moveCardSchema.safeParse(request.body);
-      if (!parsed.success)
-        return reply.code(400).send({ error: "Invalid position" });
       const userId = (request.user as { sub: string }).sub;
       if (!can(await getRole(userId, boardId), "update"))
         return reply.code(403).send({ error: "Board access denied" });
+      const [card] = await db
+        .select({ id: cards.id })
+        .from(cards)
+        .innerJoin(columns, eq(cards.columnId, columns.id))
+        .where(and(eq(cards.id, cardId), eq(columns.boardId, boardId)))
+        .limit(1);
+      if (!card) return reply.code(404).send({ error: "Card not found" });
+      const parsed = moveCardSchema.safeParse(request.body);
+      if (!parsed.success)
+        return reply.code(400).send({ error: "Invalid position" });
       const [destination] = await db
         .select()
         .from(columns)
@@ -598,13 +636,8 @@ export async function buildApp(): Promise<FastifyInstance> {
           ),
         )
         .limit(1);
-      const [card] = await db
-        .select()
-        .from(cards)
-        .where(eq(cards.id, cardId))
-        .limit(1);
-      if (!destination || !card)
-        return reply.code(404).send({ error: "Card or destination not found" });
+      if (!destination)
+        return reply.code(404).send({ error: "Column not found" });
       const [updated] = await db
         .update(cards)
         .set({
@@ -612,8 +645,20 @@ export async function buildApp(): Promise<FastifyInstance> {
           order: parsed.data.order,
           updatedAt: new Date(),
         })
-        .where(eq(cards.id, cardId))
+        .where(
+          and(
+            eq(cards.id, cardId),
+            inArray(
+              cards.columnId,
+              db
+                .select({ id: columns.id })
+                .from(columns)
+                .where(eq(columns.boardId, boardId)),
+            ),
+          ),
+        )
         .returning();
+      if (!updated) return reply.code(404).send({ error: "Card not found" });
       publish(boardId, {
         type: "card.moved",
         cardId,
