@@ -33,7 +33,8 @@ import CardDetailsDialog, {
   type BoardMember,
 } from "./card-details-dialog";
 
-const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
+const API = "/api";
+const SOCKET_API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 type Card = {
   id: string;
   title: string;
@@ -198,21 +199,35 @@ export default function BoardApp() {
   }, [signIn]);
   useEffect(() => {
     if (!board) return;
-    const socket = new WebSocket(
-      `${API.replace(/^http/, "ws")}/boards/${board.id}/live`,
-    );
-    socket.onopen = () => setConnected(true);
-    socket.onclose = () => setConnected(false);
-    socket.onmessage = (event) => {
-      const parsed = boardEventSchema.safeParse(JSON.parse(event.data));
-      if (!parsed.success) return;
-      if (parsed.data.type === "presence.snapshot") {
-        setViewers(parsed.data.users);
-        return;
-      }
-      void loadBoard(board.id);
+    let socket: WebSocket | undefined;
+    let cancelled = false;
+    void request<{ ticket: string }>(`/boards/${board.id}/live-ticket`, {
+      method: "POST",
+      body: JSON.stringify({}),
+    })
+      .then(({ ticket }) => {
+        if (cancelled) return;
+        const connection = new WebSocket(
+          `${SOCKET_API.replace(/^http/, "ws")}/boards/${board.id}/live?ticket=${encodeURIComponent(ticket)}`,
+        );
+        socket = connection;
+        connection.onopen = () => setConnected(true);
+        connection.onclose = () => setConnected(false);
+        connection.onmessage = (event) => {
+          const parsed = boardEventSchema.safeParse(JSON.parse(event.data));
+          if (!parsed.success) return;
+          if (parsed.data.type === "presence.snapshot") {
+            setViewers(parsed.data.users);
+            return;
+          }
+          void loadBoard(board.id);
+        };
+      })
+      .catch(() => setConnected(false));
+    return () => {
+      cancelled = true;
+      socket?.close();
     };
-    return () => socket.close();
   }, [board?.id, loadBoard]);
 
   const allIds = useMemo(

@@ -1,6 +1,11 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { FastifyInstance } from "fastify";
+import argon2 from "argon2";
+import { eq } from "drizzle-orm";
+import { db } from "./db/index.js";
+import { users } from "./db/schema.js";
 import { buildApp } from "./app.js";
+import { upsertDemoUser } from "./demo-user.js";
 
 const databaseReady = Boolean(process.env.DATABASE_URL);
 const suite = databaseReady ? describe : describe.skip;
@@ -53,6 +58,23 @@ suite("API integration with PostgreSQL", () => {
       name: "Integration board",
       role: "owner",
     });
+    const liveTicket = await app.inject({
+      method: "POST",
+      url: `/boards/${board.id}/live-ticket`,
+      headers: { cookie },
+    });
+    expect(liveTicket.statusCode).toBe(200);
+    expect(liveTicket.headers["cache-control"]).toBe("no-store");
+    expect(liveTicket.json()).toMatchObject({
+      ticket: expect.any(String),
+      expiresIn: 60,
+    });
+    const deniedTicket = await app.inject({
+      method: "POST",
+      url: `/boards/${crypto.randomUUID()}/live-ticket`,
+      headers: { cookie },
+    });
+    expect(deniedTicket.statusCode).toBe(403);
     const owner = registration.json() as { id: string };
     const members = await app.inject({
       method: "GET",
@@ -192,5 +214,30 @@ suite("API integration with PostgreSQL", () => {
       payload: { name: "Should not be created" },
     });
     expect(denied.statusCode).toBe(403);
+  }, 30000);
+
+  it("updates a seeded user's password without creating a duplicate", async () => {
+    const identity = `seed-${crypto.randomUUID()}@flowboard.dev`;
+    try {
+      const first = await upsertDemoUser(
+        identity,
+        "Seed Test User",
+        "first-test-password",
+      );
+      const second = await upsertDemoUser(
+        identity,
+        "Seed Test User",
+        "second-test-password",
+      );
+      expect(second.id).toBe(first.id);
+      expect(
+        await argon2.verify(second.passwordHash, "first-test-password"),
+      ).toBe(false);
+      expect(
+        await argon2.verify(second.passwordHash, "second-test-password"),
+      ).toBe(true);
+    } finally {
+      await db.delete(users).where(eq(users.email, identity));
+    }
   }, 30000);
 });

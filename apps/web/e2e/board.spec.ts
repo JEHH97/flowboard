@@ -28,12 +28,12 @@ test("sign in, create a card, sync to a second client, and capture themes", asyn
     "aria-label",
     /Flowboard Demo/,
   );
-  const cookies = await page.context().cookies("http://localhost:4000");
+  const cookies = await page.context().cookies("http://localhost:3001");
   const cookieHeader = cookies
     .map(({ name, value }) => `${name}=${value}`)
     .join("; ");
   const boardsResponse = await page.request.get(
-    "http://localhost:4000/boards",
+    "http://localhost:3001/api/boards",
     {
       headers: { cookie: cookieHeader },
     },
@@ -45,7 +45,7 @@ test("sign in, create a card, sync to a second client, and capture themes", asyn
   const demoBoard = boards.find((board) => board.name === "Product Launch");
   if (!demoBoard) throw new Error("Seed board was not available");
   const boardResponse = await page.request.get(
-    `http://localhost:4000/boards/${demoBoard.id}`,
+    `http://localhost:3001/api/boards/${demoBoard.id}`,
     { headers: { cookie: cookieHeader } },
   );
   const boardData = (await boardResponse.json()) as {
@@ -58,7 +58,7 @@ test("sign in, create a card, sync to a second client, and capture themes", asyn
       card.title === "Launch with confidence"
     ) {
       await page.request.delete(
-        `http://localhost:4000/boards/${demoBoard.id}/cards/${card.id}`,
+        `http://localhost:3001/api/boards/${demoBoard.id}/cards/${card.id}`,
         { headers: { cookie: cookieHeader } },
       );
     }

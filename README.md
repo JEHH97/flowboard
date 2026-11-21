@@ -30,7 +30,9 @@ flowchart LR
 - Board roles are checked by the API on every board read, mutation, invitation, and socket join; role checks are also isolated as pure domain logic.
 - Fractional numeric order lets a card move without rewriting every sibling position. A rebalance helper is available when a gap is exhausted.
 - Short-lived access cookies and hashed, revocable refresh sessions keep tokens out of browser storage. Cookies are HttpOnly and production cookies require TLS.
+- In a hosted deployment, browser REST calls use the Vercel `/api/*` rewrite to Render. The API sets first-party cookies on the web origin, avoiding third-party-cookie restrictions in Safari and privacy-focused browsers. WebSockets connect directly to Render with a single-use ticket issued through the authenticated REST proxy; the ticket is bound to the user and board and expires after 60 seconds.
 - REST requests and realtime messages share the same board identifier. The server verifies membership before attaching a socket to a room and broadcasts mutations to peers.
+- The showcase seed upserts the demo account on every run, including synchronizing its password to `DEMO_PASSWORD`. The public demo password is deliberately `flowboard-demo-password`; anyone can sign in and change cards, so the hosted board is shared and may be modified by visitors.
 - Zod schemas live in a shared workspace, so browser and server use the same request contract.
 
 ## Local run
@@ -79,7 +81,9 @@ CI supplies its own Postgres service container. The E2E flow signs in in two bro
 
 ## Demo
 
-Live demo: **[Add hosted demo URL]**. The project is configured for a Vercel web deployment, a Render API service, and a Neon PostgreSQL database; see [DEPLOY.md](DEPLOY.md).
+Demo: _coming soon_. The project is configured for a Vercel web deployment, a Render API service, and a Neon PostgreSQL database; see [DEPLOY.md](DEPLOY.md). Once deployed, the public login is `demo@flowboard.dev` / `flowboard-demo-password`; visitors share and can change the demo board.
+
+Render's free web service sleeps after 15 minutes without activity and may take about 50 seconds to start on the next visit.
 
 ## Repository map
 

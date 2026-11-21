@@ -8,14 +8,14 @@ RUN npm ci
 COPY . .
 ARG NEXT_PUBLIC_API_URL=http://localhost:4000
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+ARG API_ORIGIN=http://api:4000
+ENV API_ORIGIN=$API_ORIGIN
 RUN npm run typecheck && npm run build --workspace @flowboard/web
 
 FROM node:24-alpine
-ENV NODE_ENV=production PORT=3000
+ENV NODE_ENV=production PORT=3000 HOSTNAME=0.0.0.0
 WORKDIR /app
-COPY --from=build /app/package.json /app/package-lock.json ./
-COPY --from=build /app/node_modules ./node_modules
-COPY --from=build /app/apps/web apps/web
-COPY --from=build /app/packages/shared packages/shared
+COPY --from=build /app/apps/web/.next/standalone ./
+COPY --from=build /app/apps/web/.next/static ./apps/web/.next/static
 EXPOSE 3000
-CMD ["npm", "run", "start", "--workspace", "@flowboard/web"]
+CMD ["node", "apps/web/server.js"]

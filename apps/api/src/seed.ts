@@ -1,33 +1,21 @@
-import argon2 from "argon2";
 import { eq } from "drizzle-orm";
 import { db, pool } from "./db/index.js";
+import { upsertDemoUser } from "./demo-user.js";
 import {
   boardLabels,
   boards,
   cards,
   columns,
   memberships,
-  users,
   workspaces,
 } from "./db/schema.js";
 
 const email = "demo@flowboard.dev";
-let [user] = await db
-  .select()
-  .from(users)
-  .where(eq(users.email, email))
-  .limit(1);
-if (!user)
-  [user] = await db
-    .insert(users)
-    .values({
-      email,
-      displayName: "Flowboard Demo",
-      passwordHash: await argon2.hash(
-        process.env.DEMO_PASSWORD ?? "flowboard-demo-password",
-      ),
-    })
-    .returning();
+const user = await upsertDemoUser(
+  email,
+  "Flowboard Demo",
+  process.env.DEMO_PASSWORD ?? "flowboard-demo-password",
+);
 if (user) {
   let [workspace] = await db
     .select()

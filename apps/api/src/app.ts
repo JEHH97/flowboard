@@ -178,9 +178,28 @@ export async function buildApp(): Promise<FastifyInstance> {
         .where(eq(refreshSessions.tokenHash, sha(token)));
     reply
       .clearCookie("access_token", { path: "/" })
-      .clearCookie("refresh_token", { path: "/auth/refresh" });
+      .clearCookie("refresh_token", { path: "/" });
     return { loggedOut: true };
   });
+
+  app.post(
+    "/boards/:boardId/live-ticket",
+    authenticate,
+    async (request, reply) => {
+      const { boardId } = request.params as { boardId: string };
+      const userId = (request.user as { sub: string }).sub;
+      if (!can(await getRole(userId, boardId), "read"))
+        return reply.code(403).send({ error: "Board access denied" });
+      reply.header("cache-control", "no-store");
+      return {
+        ticket: app.jwt.sign(
+          { sub: userId, boardId, kind: "socket", jti: randomUUID() },
+          { expiresIn: "60s" },
+        ),
+        expiresIn: 60,
+      };
+    },
+  );
 
   app.get("/boards", authenticate, async (request) => {
     const userId = (request.user as { sub: string }).sub;
@@ -661,16 +680,40 @@ export async function buildApp(): Promise<FastifyInstance> {
     return { boardId: invite.boardId, role: invite.role };
   });
 
+  const consumedSocketTickets = new Map<string, number>();
   app.get("/boards/:boardId/live", { websocket: true }, (socket, request) => {
     const { boardId } = request.params as { boardId: string };
-    const token = request.cookies.access_token;
-    if (!token) return socket.close();
-    let userId: string;
+    const origin = request.headers.origin;
+    if (
+      origin &&
+      origin !== (process.env.WEB_ORIGIN ?? "http://localhost:3000")
+    )
+      return socket.close();
+    const { ticket } = request.query as { ticket?: string };
+    if (!ticket || ticket.length > 4096) return socket.close();
+    let claims: { sub: string; boardId: string; kind: string; jti: string };
     try {
-      userId = app.jwt.verify<{ sub: string }>(token).sub;
+      claims = app.jwt.verify<{
+        sub: string;
+        boardId: string;
+        kind: string;
+        jti: string;
+      }>(ticket);
     } catch {
       return socket.close();
     }
+    if (
+      claims.kind !== "socket" ||
+      claims.boardId !== boardId ||
+      !claims.jti ||
+      consumedSocketTickets.has(claims.jti)
+    )
+      return socket.close();
+    const now = Date.now();
+    for (const [jti, expiresAt] of consumedSocketTickets)
+      if (expiresAt <= now) consumedSocketTickets.delete(jti);
+    consumedSocketTickets.set(claims.jti, now + 60_000);
+    const userId = claims.sub;
     void Promise.all([
       getRole(userId, boardId),
       db
@@ -767,19 +810,18 @@ async function issueTokens(
     expiresAt: new Date(Date.now() + 30 * 86400000),
   });
   const secure = process.env.NODE_ENV === "production";
-  const sameSite = secure ? "none" : "lax";
   reply.setCookie("access_token", access, {
     httpOnly: true,
     secure,
-    sameSite,
+    sameSite: "lax",
     path: "/",
     maxAge: 900,
   });
   reply.setCookie("refresh_token", refresh, {
     httpOnly: true,
     secure,
-    sameSite,
-    path: "/auth/refresh",
+    sameSite: "lax",
+    path: "/",
     maxAge: 2592000,
   });
 }
