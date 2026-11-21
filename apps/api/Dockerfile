@@ -1,4 +1,4 @@
-FROM node:24.11.1-alpine3.22 AS build
+FROM node:26.3.0-alpine3.22 AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
 COPY apps/api/package.json apps/api/package.json
@@ -8,7 +8,7 @@ RUN npm ci
 COPY . .
 RUN npm run typecheck && npm run build --workspace @flowboard/api
 
-FROM node:24.11.1-alpine3.22 AS runtime
+FROM node:26.3.0-alpine3.22 AS runtime
 ENV NODE_ENV=production PORT=4000 RUN_SEED=true
 WORKDIR /app
 COPY --from=build --chown=1000:1000 /app/package.json /app/package-lock.json ./
