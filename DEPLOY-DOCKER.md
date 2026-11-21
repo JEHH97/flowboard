@@ -5,13 +5,20 @@ Flowboard publishes two prebuilt images to GitHub Container Registry (GHCR):
 - `ghcr.io/jehh97/flowboard-api`
 - `ghcr.io/jehh97/flowboard-web`
 
-The images are built for `linux/amd64`. A release tag such as `v1.2.3` publishes
-`v1.2.3`, `sha-<short-commit>`, and `latest`. A manual workflow run on `main`
-publishes `sha-<short-commit>` and `latest`; manual runs on other branches do not
-move `latest`. Pin both services to the same release with `FLOWBOARD_VERSION`
-for reproducible upgrades. No secrets are included in image layers, build
+The API and web images are built for `linux/amd64`. A release tag such as
+`v1.0.1` publishes
+the version tag and `sha-<short-commit>`; manual workflow runs publish only the
+commit tag. There is no floating `latest` tag. The workflow scans each local
+image for vulnerabilities and secrets before publishing: fixable CRITICAL
+findings block release, and HIGH findings are reported. Pin both services to the
+same release with `FLOWBOARD_VERSION` (default `v1.0.1`) for reproducible
+upgrades. No secrets are included in image layers, build
 arguments, or the published image configuration; credentials are supplied only
 when the containers start.
+
+PostgreSQL is built locally from the pinned `postgres:17.12-alpine3.24` base.
+The small derivative applies available Alpine security patches and omits the
+unused `gosu` binary (the service runs as the `postgres` UID).
 
 ## Start with Compose
 
@@ -22,8 +29,9 @@ and edit every placeholder before starting the stack:
 cp deploy/.env.example deploy/.env
 openssl rand -hex 32 # use separate output for JWT_SECRET and REFRESH_TOKEN_SECRET
 openssl rand -hex 32 # suitable for POSTGRES_PASSWORD as well
-docker compose --env-file deploy/.env -f deploy/docker-compose.prod.yml pull
-docker compose --env-file deploy/.env -f deploy/docker-compose.prod.yml up -d
+docker compose --env-file deploy/.env -f deploy/docker-compose.prod.yml pull api web
+docker compose --env-file deploy/.env -f deploy/docker-compose.prod.yml build postgres
+docker compose --env-file deploy/.env -f deploy/docker-compose.prod.yml up -d --wait
 ```
 
 Use the first generated random value for `JWT_SECRET`, a different one for
@@ -40,14 +48,14 @@ shell command or checked-in file):
 
 ```sh
 docker login ghcr.io -u YOUR_GITHUB_USERNAME
-docker compose --env-file deploy/.env -f deploy/docker-compose.prod.yml pull
+docker compose --env-file deploy/.env -f deploy/docker-compose.prod.yml pull api web
 ```
 
 `deploy/.env.example` lists all supported settings:
 
 | Variable                                            | Purpose                                                                                                                                  |
 | --------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| `FLOWBOARD_VERSION`                                 | Shared API/web image tag; defaults to `latest`.                                                                                          |
+| `FLOWBOARD_VERSION`                                 | Shared API/web image tag; defaults to `v1.0.1`.                                                                                          |
 | `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` | PostgreSQL account and database; database data persists in a named volume.                                                               |
 | `JWT_SECRET`, `REFRESH_TOKEN_SECRET`                | Independent API signing keys.                                                                                                            |
 | `WEB_ORIGIN`                                        | Exact public web origin including scheme, with no trailing slash; used for CORS and WebSocket origin checks.                             |
@@ -55,6 +63,7 @@ docker compose --env-file deploy/.env -f deploy/docker-compose.prod.yml pull
 | `WS_PUBLIC_URL`                                     | Public API origin reachable by browsers for WebSockets, e.g. `https://api.example.com`; the browser upgrades HTTPS to WSS automatically. |
 | `DEMO_PASSWORD`                                     | Seeded demo account password.                                                                                                            |
 | `RUN_SEED`                                          | `true` (default) runs the demo seed; set `false` to disable it.                                                                          |
+| `BIND_ADDRESS`                                      | Host address for web and API ports; defaults to loopback `127.0.0.1` so the reverse proxy can publish them.                              |
 | `WEB_PORT`, `API_PORT`                              | Host ports published for web and the API/WebSocket upstream; default to `3000` and `4000`.                                               |
 
 `DATABASE_URL` is composed for the API from the `POSTGRES_*` settings. It is not
@@ -64,15 +73,18 @@ must be the internal Compose service address, not the public browser URL.
 
 ## Domains, TLS, and WebSockets
 
-The Compose stack publishes only the web and API ports; PostgreSQL is private
-on the Compose network. Put a TLS reverse proxy in front of the web and API
+The Compose stack publishes only the web and API ports on `127.0.0.1` by
+default; PostgreSQL is private on the internal `flowboard` network and has no
+published port. Web and API also join a private bridge for host-port forwarding.
+Put a TLS reverse proxy in front of the web and API
 containers. Configure `WEB_ORIGIN` to the exact browser origin, such as
 `https://flowboard.example.com`, and set `WS_PUBLIC_URL` to the externally
 reachable API origin. The API requires the WebSocket `Origin` to match
 `WEB_ORIGIN` exactly. REST calls and auth cookies travel through the web
 container's same-origin `/api/*` proxy, so the browser's auth cookies remain
-first-party. The API port is published for the WebSocket connection and may be
-firewalled so only the reverse proxy can reach it.
+first-party. The API port is bound to loopback for the WebSocket connection, so
+only a local reverse proxy can reach it by default. Set `BIND_ADDRESS` only if a
+different host binding is deliberately required.
 
 Example Caddy configuration when both services are reachable on localhost:
 
@@ -107,10 +119,13 @@ will connect using `wss://`).
 
 ## Ports, health, and startup
 
-- Web: container port `3000`, published as `WEB_PORT`; its health check requests
+- Web: container port `3000`, published on loopback as `WEB_PORT`; its health check requests
   `/api/runtime-config`.
-- API: container port `4000`, published as `API_PORT`; health is `/health`.
+- API: container port `4000`, published on loopback as `API_PORT`; health is `/health`.
 - PostgreSQL: container port `5432`, never published to the host by this file.
+- All containers run read-only with dropped Linux capabilities and
+  no-new-privileges; writable temporary paths use bounded tmpfs mounts. Memory
+  and PID limits are set per service.
 - Startup ordering: Compose waits for PostgreSQL health, then the API applies
   migrations and (unless disabled) seeds data before it becomes healthy; the
   web service starts after the API health check passes.
@@ -132,6 +147,7 @@ and confirm that the live indicator connects. A successful `/api/health`
 request verifies the same-origin API proxy and the API health request verifies
 the API service itself.
 
-To upgrade, change `FLOWBOARD_VERSION` to a published tag, then run `pull` and
-`up -d`. For rollback, select the previous version and repeat those commands.
+To upgrade, change `FLOWBOARD_VERSION` to a published tag, then run `pull api
+web` and `up -d --build --wait`. For rollback, select the previous version and
+repeat those commands.
 Container logs are available with `docker compose ... logs -f web api`.

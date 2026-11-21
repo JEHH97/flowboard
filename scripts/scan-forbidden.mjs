@@ -34,15 +34,19 @@ async function visit(directory) {
     if (entry.isDirectory()) await visit(file);
     else {
       const content = await readFile(file, "utf8").catch(() => "");
+      const contentWithoutActionShas = content.replace(
+        /uses:\s*[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+@[0-9a-f]{40}\b/gi,
+        "",
+      );
       for (const term of banned)
         if (content.toLowerCase().includes(term.toLowerCase()))
           violations.push(
             `${path.relative(root, file)} contains a restricted term`,
           );
       if (
-        /(?<![\d.])\d{10,15}(?![\d.])/.test(content) ||
+        /(?<![\d.])\d{10,15}(?![\d.])/.test(contentWithoutActionShas) ||
         /(?:\+?\d{1,3}[ .-])?(?:\(\d{2,4}\)|\d{2,4})[ .-]\d{2,4}[ .-]\d{3,4}/.test(
-          content,
+          contentWithoutActionShas,
         )
       )
         violations.push(

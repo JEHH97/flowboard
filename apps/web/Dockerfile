@@ -1,4 +1,4 @@
-FROM node:24.11.1-alpine3.22 AS build
+FROM node:24.22.3-alpine3.24 AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
 COPY apps/api/package.json apps/api/package.json
@@ -8,11 +8,13 @@ RUN npm ci
 COPY . .
 RUN npm run typecheck && npm run build --workspace @flowboard/web
 
-FROM node:24.11.1-alpine3.22 AS runtime
+FROM node:24.22.3-alpine3.24 AS runtime
 ENV NODE_ENV=production PORT=3000 HOSTNAME=0.0.0.0
 WORKDIR /app
 COPY --from=build --chown=1000:1000 /app/apps/web/.next/standalone ./
 COPY --from=build --chown=1000:1000 /app/apps/web/.next/static ./apps/web/.next/static
+RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack \
+  /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack
 LABEL org.opencontainers.image.source="https://github.com/JEHH97/flowboard" \
       org.opencontainers.image.licenses="MIT" \
       org.opencontainers.image.title="Flowboard Web" \

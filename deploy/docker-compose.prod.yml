@@ -1,13 +1,27 @@
 services:
   postgres:
-    image: postgres:17.6-alpine3.22
+    image: flowboard-postgres:17.12-alpine3.24
+    build:
+      context: ..
+      dockerfile: deploy/postgres.Dockerfile
     restart: unless-stopped
+    user: "70:70"
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-flowboard}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in deploy/.env}
       POSTGRES_DB: ${POSTGRES_DB:-flowboard}
     volumes:
       - flowboard-postgres:/var/lib/postgresql/data
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+      - /var/run/postgresql:rw,noexec,nosuid,size=16m,uid=70,gid=70,mode=3777
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    mem_limit: 512m
+    pids_limit: 128
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 10s
@@ -18,7 +32,7 @@ services:
       - flowboard
 
   api:
-    image: ghcr.io/jehh97/flowboard-api:${FLOWBOARD_VERSION:-latest}
+    image: ghcr.io/jehh97/flowboard-api:${FLOWBOARD_VERSION:-v1.0.1}
     restart: unless-stopped
     env_file:
       - .env
@@ -28,7 +42,16 @@ services:
       DATABASE_URL: postgres://${POSTGRES_USER:-flowboard}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in deploy/.env}@postgres:5432/${POSTGRES_DB:-flowboard}
       RUN_SEED: ${RUN_SEED:-true}
     ports:
-      - "${API_PORT:-4000}:4000"
+      - "${BIND_ADDRESS:-127.0.0.1}:${API_PORT:-4000}:4000"
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    mem_limit: 512m
+    pids_limit: 128
     depends_on:
       postgres:
         condition: service_healthy
@@ -46,9 +69,10 @@ services:
       start_period: 60s
     networks:
       - flowboard
+      - host-access
 
   web:
-    image: ghcr.io/jehh97/flowboard-web:${FLOWBOARD_VERSION:-latest}
+    image: ghcr.io/jehh97/flowboard-web:${FLOWBOARD_VERSION:-v1.0.1}
     restart: unless-stopped
     environment:
       NODE_ENV: production
@@ -57,7 +81,17 @@ services:
       PORT: 3000
       HOSTNAME: 0.0.0.0
     ports:
-      - "${WEB_PORT:-3000}:3000"
+      - "${BIND_ADDRESS:-127.0.0.1}:${WEB_PORT:-3000}:3000"
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+      - /app/apps/web/.next/cache:rw,noexec,nosuid,size=128m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    mem_limit: 768m
+    pids_limit: 128
     depends_on:
       api:
         condition: service_healthy
@@ -75,9 +109,13 @@ services:
       start_period: 20s
     networks:
       - flowboard
+      - host-access
 
 networks:
   flowboard:
+    internal: true
+  host-access:
+    driver: bridge
 
 volumes:
   flowboard-postgres:

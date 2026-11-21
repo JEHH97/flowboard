@@ -1,4 +1,4 @@
-FROM node:24.11.1-alpine3.22 AS build
+FROM node:24.22.3-alpine3.24 AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
 COPY apps/api/package.json apps/api/package.json
@@ -7,17 +7,19 @@ COPY packages/shared/package.json packages/shared/package.json
 RUN npm ci
 COPY . .
 RUN npm run typecheck && npm run build --workspace @flowboard/api
+RUN npm prune --omit=dev
 
-FROM node:24.11.1-alpine3.22 AS runtime
+FROM node:24.22.3-alpine3.24 AS runtime
 ENV NODE_ENV=production PORT=4000 RUN_SEED=true
 WORKDIR /app
-COPY --from=build --chown=1000:1000 /app/package.json /app/package-lock.json ./
 COPY --from=build --chown=1000:1000 /app/node_modules ./node_modules
 COPY --from=build --chown=1000:1000 /app/apps/api/package.json apps/api/package.json
 COPY --from=build --chown=1000:1000 /app/apps/api/dist apps/api/dist
 COPY --from=build --chown=1000:1000 /app/apps/api/migrations apps/api/migrations
 COPY --from=build --chown=1000:1000 /app/packages/shared/dist packages/shared/dist
 COPY --from=build --chown=1000:1000 /app/packages/shared/package.json packages/shared/package.json
+RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack \
+  /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack
 LABEL org.opencontainers.image.source="https://github.com/JEHH97/flowboard" \
       org.opencontainers.image.licenses="MIT" \
       org.opencontainers.image.title="Flowboard API" \
