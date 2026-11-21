@@ -34,7 +34,6 @@ import CardDetailsDialog, {
 } from "./card-details-dialog";
 
 const API = "/api";
-const SOCKET_API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 type Card = {
   id: string;
   title: string;
@@ -201,15 +200,25 @@ export default function BoardApp() {
     if (!board) return;
     let socket: WebSocket | undefined;
     let cancelled = false;
-    void request<{ ticket: string }>(`/boards/${board.id}/live-ticket`, {
-      method: "POST",
-      body: JSON.stringify({}),
-    })
-      .then(({ ticket }) => {
+    void fetch(`${API}/runtime-config`, { cache: "no-store" })
+      .then(async (response) => {
+        if (!response.ok) throw new Error("Runtime configuration unavailable");
+        return (await response.json()) as { webSocketUrl: string };
+      })
+      .then(({ webSocketUrl }) =>
+        request<{ ticket: string }>(`/boards/${board.id}/live-ticket`, {
+          method: "POST",
+          body: JSON.stringify({}),
+        }).then(({ ticket }) => ({ ticket, webSocketUrl })),
+      )
+      .then(({ ticket, webSocketUrl }) => {
         if (cancelled) return;
-        const connection = new WebSocket(
-          `${SOCKET_API.replace(/^http/, "ws")}/boards/${board.id}/live?ticket=${encodeURIComponent(ticket)}`,
+        const socketUrl = new URL(
+          `/boards/${board.id}/live?ticket=${encodeURIComponent(ticket)}`,
+          webSocketUrl || window.location.origin,
         );
+        socketUrl.protocol = socketUrl.protocol === "https:" ? "wss:" : "ws:";
+        const connection = new WebSocket(socketUrl);
         socket = connection;
         connection.onopen = () => setConnected(true);
         connection.onclose = () => setConnected(false);

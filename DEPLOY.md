@@ -1,6 +1,6 @@
 # Deployment guide
 
-This guide deploys the public demo with a free Neon PostgreSQL database, a free Render API service, and a Vercel web app. Do not put database credentials or signing secrets in the web project's `NEXT_PUBLIC_*` variables.
+This guide deploys the public demo with a free Neon PostgreSQL database, a free Render API service, and a Vercel web app. For Docker/Compose deployments, use [DEPLOY-DOCKER.md](DEPLOY-DOCKER.md). Do not put database credentials or signing secrets in the web project's `NEXT_PUBLIC_*` variables.
 
 The demo account is public by design: `demo@flowboard.dev` / `flowboard-demo-password`. Anyone can sign in and edit the shared board. `DEMO_PASSWORD` must exactly match the password shown in the web sign-in form. Running the seed again safely synchronizes the account password and preserves the existing showcase board.
 
@@ -31,7 +31,7 @@ Render's free web service sleeps after 15 minutes without activity. Its first re
 
 ## 3. Migrate and seed Neon
 
-The API container applies migrations and runs the seed when it starts. To run these steps manually (for example, to sync the public password later), use Node.js 24 and npm from the repository root. Install workspace dependencies once, then use the same `DATABASE_URL` and `DEMO_PASSWORD` configured in Render:
+The API container applies migrations and runs the seed when it starts (`RUN_SEED=true` by default). For any private deployment, set `RUN_SEED=false` if you do not want the demo account/board. To run these steps manually (for example, to sync the public password later), use Node.js 24 and npm from the repository root. Install workspace dependencies once, then use the same `DATABASE_URL` and `DEMO_PASSWORD` configured in Render:
 
 ```sh
 scripts/in-dev npm ci
@@ -51,7 +51,7 @@ The seed is safe to rerun: it updates the demo user's password hash to the confi
    | `API_ORIGIN`          | Render API origin from step 2, e.g. `https://flowboard-api.onrender.com`   |
    | `NEXT_PUBLIC_API_URL` | The same Render API origin; used only by the browser to open the WebSocket |
 
-   `API_ORIGIN` is used server-side by the Next.js `/api/*` rewrite so REST requests and HttpOnly cookies use the Vercel origin. `NEXT_PUBLIC_API_URL` is necessarily visible in the browser bundle; it is an API address, not a secret. Do not put a signing key, database URL, or password in any `NEXT_PUBLIC_*` variable.
+`API_ORIGIN` is read by the server-side `/api/*` route handler at request time, so REST requests and HttpOnly cookies use the Vercel origin. `NEXT_PUBLIC_API_URL` supplies the browser's WebSocket API address for this Vercel build; it is necessarily visible in the browser bundle and is an API address, not a secret. Do not put a signing key, database URL, or password in any `NEXT_PUBLIC_*` variable. The Docker image instead reads `API_ORIGIN` and `WS_PUBLIC_URL` at runtime.
 
 3. Deploy the Vercel project. Copy its canonical production origin and put that exact value in Render's `WEB_ORIGIN`. If you change the Vercel domain, update `WEB_ORIGIN` and redeploy/restart the API.
 4. If you enabled Preview deployments, configure an exact matching `WEB_ORIGIN` for the preview and make sure the preview uses the same `API_ORIGIN`. The API intentionally rejects WebSocket origins that do not exactly match `WEB_ORIGIN`.
