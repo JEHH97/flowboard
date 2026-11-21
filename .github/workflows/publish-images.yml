@@ -5,6 +5,7 @@ on:
     tags:
       - "v*.*.*"
   workflow_dispatch:
+    # A branch dispatch emits only sha-*; only stable version tags update latest.
 
 permissions:
   contents: read
@@ -35,9 +36,9 @@ jobs:
         uses: docker/metadata-action@030e881283bb7a6894de51c315a6bfe6a94e05cf # v6.0.0 (Node 24)
         with:
           images: ghcr.io/jehh97/${{ matrix.image }}
-          flavor: latest=false
+          flavor: latest=auto
           tags: |
-            type=ref,event=tag
+            type=semver,pattern=v{{version}}
             type=sha,format=short,prefix=sha-
           labels: |
             org.opencontainers.image.source=https://github.com/JEHH97/flowboard
