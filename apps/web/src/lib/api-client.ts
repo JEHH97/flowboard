@@ -30,11 +30,14 @@ export async function request<T>(
   });
   if (response.status === 401 && path !== "/auth/login") {
     if (isRetry) throw new SessionExpiredError("Session expired");
-    if (await refreshSession(fetcher)) return request<T>(path, init, fetcher, true);
+    if (await refreshSession(fetcher))
+      return request<T>(path, init, fetcher, true);
     throw new SessionExpiredError("Session expired");
   }
   if (response.status === 204) return undefined as T;
   if (!response.ok)
-    throw new Error(((await response.json()) as { error?: string }).error ?? "Request failed");
+    throw new Error(
+      ((await response.json()) as { error?: string }).error ?? "Request failed",
+    );
   return response.json() as Promise<T>;
 }

@@ -323,7 +323,11 @@ export default function CardDetailsDialog({
             (confirmingDelete ? (
               <>
                 <span className="dialog-confirm-prompt">Delete this card?</span>
-                <button className="secondary-button" type="button" onClick={() => setConfirmingDelete(false)}>
+                <button
+                  className="secondary-button"
+                  type="button"
+                  onClick={() => setConfirmingDelete(false)}
+                >
                   Cancel
                 </button>
                 <button
@@ -336,7 +340,11 @@ export default function CardDetailsDialog({
                 </button>
               </>
             ) : (
-              <button className="danger-button" type="button" onClick={() => setConfirmingDelete(true)}>
+              <button
+                className="danger-button"
+                type="button"
+                onClick={() => setConfirmingDelete(true)}
+              >
                 Delete card
               </button>
             ))}
@@ -345,7 +353,11 @@ export default function CardDetailsDialog({
             Close
           </button>
           {!readOnly && !confirmingDelete && (
-            <button className="primary" type="submit" disabled={saving || !title.trim()}>
+            <button
+              className="primary"
+              type="submit"
+              disabled={saving || !title.trim()}
+            >
               {saving ? "Saving…" : "Save changes"}
             </button>
           )}

@@ -78,12 +78,12 @@ frontend-design skill).
 
 **1. Detecting whether a session is already valid on page load, and who it belongs to**
 
-- *A — Reuse `GET /boards`:* call it on mount; `200` means signed in, load
+- _A — Reuse `GET /boards`:_ call it on mount; `200` means signed in, load
   the board; `401` means show the (now empty) login form. No backend
   change — but it doesn't solve identity: nothing in its response carries
   the signed-in user's `displayName`, and the auth cookies are `HttpOnly`,
   so the browser cannot read them to find out another way.
-- *B — Add `GET /auth/me`* (authenticated, returns
+- _B — Add `GET /auth/me`_ (authenticated, returns
   `{ id, email, displayName }` by reading `request.user.sub` the same way
   every other authenticated route already does): one small backend
   addition, but it is the only way to answer "who is this?" after a
@@ -95,10 +95,10 @@ frontend-design skill).
 
 **1b. Access-token expiry (15 minutes) during an active session**
 
-- *A — Do nothing (today's behavior):* once the access token expires, every
+- _A — Do nothing (today's behavior):_ once the access token expires, every
   authenticated call starts failing with 401 and the user is silently stuck,
   since nothing currently calls `POST /auth/refresh`.
-- *B — Retry-once-after-refresh in `request()`:* when any authenticated
+- _B — Retry-once-after-refresh in `request()`:_ when any authenticated
   call gets a 401, call `POST /auth/refresh` once; on success, retry the
   original call once; on failure, treat it as a real session end (clear
   `user`/`board` state, show the login screen).
@@ -113,19 +113,19 @@ frontend-design skill).
 
 **2. Delete confirmation UX**
 
-- *A — `window.confirm()`:* simplest, but a native dialog — same category
+- _A — `window.confirm()`:_ simplest, but a native dialog — same category
   of shortcut as the `window.prompt()` this phase removes.
-- *B — Inline confirm:* the delete control (e.g. a trash icon) turns into
+- _B — Inline confirm:_ the delete control (e.g. a trash icon) turns into
   "Delete? [Confirm] [Cancel]" in place, no dialog.
 - **Picked: B.** Keeps "no native browser dialogs" consistent across the
   whole app; Phase B will restyle it but the interaction pattern stays.
 
 **3. Create forms for board/column/card**
 
-- *A — Inline input appearing in place of the "+ Add" button:* press Enter
+- _A — Inline input appearing in place of the "+ Add" button:_ press Enter
   to submit, Escape/blur to cancel. Matches today's single-field creation.
-- *B — A modal, reusing the `<dialog>` pattern from
-  `card-details-dialog.tsx`:* more structure than a one-field form needs.
+- _B — A modal, reusing the `<dialog>` pattern from
+  `card-details-dialog.tsx`:_ more structure than a one-field form needs.
 - **Picked: A**, for boards, columns, and cards alike. Phase B can turn
   these into richer components once the visual redesign happens; this
   phase only needs to stop using `window.prompt()`.

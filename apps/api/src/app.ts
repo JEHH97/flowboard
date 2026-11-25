@@ -187,8 +187,13 @@ export async function buildApp(): Promise<FastifyInstance> {
 
   app.get("/auth/me", authenticate, async (request, reply) => {
     const userId = (request.user as { sub: string }).sub;
-    const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
-    if (!user) return reply.code(401).send({ error: "Authentication required" });
+    const [user] = await db
+      .select()
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+    if (!user)
+      return reply.code(401).send({ error: "Authentication required" });
     return { id: user.id, email: user.email, displayName: user.displayName };
   });
 

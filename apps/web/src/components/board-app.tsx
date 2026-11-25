@@ -138,7 +138,9 @@ function CardItem({
 
 export default function BoardApp() {
   const [board, setBoard] = useState<Board | null>(null);
-  const [boards, setBoards] = useState<Array<{ id: string; name: string; role: string }>>([]);
+  const [boards, setBoards] = useState<
+    Array<{ id: string; name: string; role: string }>
+  >([]);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [checkingSession, setCheckingSession] = useState(true);
@@ -164,7 +166,9 @@ export default function BoardApp() {
 
   const loadBoard = useCallback(async (id?: string) => {
     const available =
-      await request<Array<{ id: string; name: string; role: string }>>("/boards");
+      await request<Array<{ id: string; name: string; role: string }>>(
+        "/boards",
+      );
     setBoards(available);
     if (available.length) {
       const boardId = id ?? available[0]!.id;
@@ -287,12 +291,17 @@ export default function BoardApp() {
   }
   async function createBoard(name: string) {
     try {
-      await request("/boards", { method: "POST", body: JSON.stringify({ name }) });
+      await request("/boards", {
+        method: "POST",
+        body: JSON.stringify({ name }),
+      });
       setCreatingBoard(false);
       await loadBoard();
     } catch (error) {
       if (resetSessionIfExpired(error)) return;
-      setNotice(error instanceof Error ? error.message : "Could not create board");
+      setNotice(
+        error instanceof Error ? error.message : "Could not create board",
+      );
     }
   }
   async function createColumn(name: string) {
@@ -300,13 +309,18 @@ export default function BoardApp() {
     try {
       await request(`/boards/${board.id}/columns`, {
         method: "POST",
-        body: JSON.stringify({ name, order: (board.columns.at(-1)?.order ?? 0) + 1024 }),
+        body: JSON.stringify({
+          name,
+          order: (board.columns.at(-1)?.order ?? 0) + 1024,
+        }),
       });
       setCreatingColumn(false);
       await loadBoard(board.id);
     } catch (error) {
       if (resetSessionIfExpired(error)) return;
-      setNotice(error instanceof Error ? error.message : "Could not create column");
+      setNotice(
+        error instanceof Error ? error.message : "Could not create column",
+      );
     }
   }
   async function onDragEnd(event: DragEndEvent) {
@@ -373,12 +387,16 @@ export default function BoardApp() {
     setDeletingCard(true);
     setCardError("");
     try {
-      await request(`/boards/${board.id}/cards/${selectedCard.id}`, { method: "DELETE" });
+      await request(`/boards/${board.id}/cards/${selectedCard.id}`, {
+        method: "DELETE",
+      });
       await loadBoard(board.id);
       setSelectedCard(null);
     } catch (error) {
       if (resetSessionIfExpired(error)) return;
-      setCardError(error instanceof Error ? error.message : "Could not delete card");
+      setCardError(
+        error instanceof Error ? error.message : "Could not delete card",
+      );
     } finally {
       setDeletingCard(false);
     }
@@ -387,12 +405,16 @@ export default function BoardApp() {
   async function deleteColumn(columnId: string) {
     if (!board) return;
     try {
-      await request(`/boards/${board.id}/columns/${columnId}`, { method: "DELETE" });
+      await request(`/boards/${board.id}/columns/${columnId}`, {
+        method: "DELETE",
+      });
       setDeletingColumnId(null);
       await loadBoard(board.id);
     } catch (error) {
       if (resetSessionIfExpired(error)) return;
-      setNotice(error instanceof Error ? error.message : "Could not delete column");
+      setNotice(
+        error instanceof Error ? error.message : "Could not delete column",
+      );
     }
   }
 
@@ -403,7 +425,9 @@ export default function BoardApp() {
       await loadBoard(board?.id === boardId ? undefined : board?.id);
     } catch (error) {
       if (resetSessionIfExpired(error)) return;
-      setNotice(error instanceof Error ? error.message : "Could not delete board");
+      setNotice(
+        error instanceof Error ? error.message : "Could not delete board",
+      );
     }
   }
 
@@ -421,7 +445,10 @@ export default function BoardApp() {
 
   async function signOut() {
     try {
-      await fetch(`${API}/auth/logout`, { method: "POST", credentials: "include" });
+      await fetch(`${API}/auth/logout`, {
+        method: "POST",
+        credentials: "include",
+      });
     } finally {
       setUser(null);
       setBoard(null);
@@ -537,10 +564,7 @@ export default function BoardApp() {
             onCancel={() => setCreatingBoard(false)}
           />
         ) : (
-          <button
-            className="add-board"
-            onClick={() => setCreatingBoard(true)}
-          >
+          <button className="add-board" onClick={() => setCreatingBoard(true)}>
             <Plus size={14} aria-hidden="true" /> New board
           </button>
         )}
