@@ -65,7 +65,7 @@ test("sign in, create a card, sync to a second client, and capture themes", asyn
       );
     }
   }
-  await page.getByRole("button", { name: "Add a card" }).first().click();
+  await page.getByRole("button", { name: /Add card to Ideas/ }).click();
   await page.getByPlaceholder("Card title").fill(cardTitle);
   await page.getByPlaceholder("Card title").press("Enter");
   await expect(second.getByText(cardTitle)).toBeVisible({
