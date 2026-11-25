@@ -442,6 +442,9 @@ export default function BoardApp() {
                 await loadBoard();
               } catch (error) {
                 if (resetSessionIfExpired(error)) return;
+                setNotice(
+                  error instanceof Error ? error.message : "Could not create board",
+                );
               }
             }
           }}
