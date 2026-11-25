@@ -11,10 +11,16 @@ test("sign in, create a card, sync to a second client, and capture themes", asyn
   }) => dialog.accept(cardTitle);
   page.on("dialog", dialogHandler);
   await page.goto("/");
+  await page.getByLabel("Email").fill("demo@flowboard.dev");
+  await page.getByLabel("Password").fill(process.env.DEMO_PASSWORD ?? "flowboard-demo-password");
+  await page.getByRole("button", { name: /Open your workspace/ }).click();
   await expect(
     page.getByRole("heading", { name: "Product Launch" }),
   ).toBeVisible({ timeout: 30000 });
   await second.goto("/");
+  await second.getByLabel("Email").fill("demo@flowboard.dev");
+  await second.getByLabel("Password").fill(process.env.DEMO_PASSWORD ?? "flowboard-demo-password");
+  await second.getByRole("button", { name: /Open your workspace/ }).click();
   await expect(
     second.getByRole("heading", { name: "Product Launch" }),
   ).toBeVisible({ timeout: 30000 });

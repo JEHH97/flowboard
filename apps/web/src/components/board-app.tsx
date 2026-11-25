@@ -21,6 +21,7 @@ import {
   ChevronDown,
   LayoutDashboard,
   ListFilter,
+  LogOut,
   MoreHorizontal,
   Moon,
   PanelsTopLeft,
@@ -32,8 +33,13 @@ import CardDetailsDialog, {
   type BoardLabel,
   type BoardMember,
 } from "./card-details-dialog";
+import { API, request, SessionExpiredError } from "../lib/api-client";
 
-const API = "/api";
+type AuthenticatedUser = {
+  id: string;
+  email: string;
+  displayName: string;
+};
 type Card = {
   id: string;
   title: string;
@@ -46,19 +52,6 @@ type Card = {
 type Column = { id: string; name: string; order: number; cards: Card[] };
 type Board = { id: string; name: string; role: string; columns: Column[] };
 type Viewer = { userId: string; displayName: string };
-
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${API}${path}`, {
-    ...init,
-    credentials: "include",
-    headers: { "content-type": "application/json", ...init?.headers },
-  });
-  if (!response.ok)
-    throw new Error(
-      ((await response.json()) as { error?: string }).error ?? "Request failed",
-    );
-  return response.json() as Promise<T>;
-}
 
 function CardItem({
   card,
@@ -142,12 +135,13 @@ function CardItem({
 export default function BoardApp() {
   const [board, setBoard] = useState<Board | null>(null);
   const [boards, setBoards] = useState<Array<{ id: string; name: string }>>([]);
-  const [email, setEmail] = useState("demo@flowboard.dev");
-  const [password, setPassword] = useState("flowboard-demo-password");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [checkingSession, setCheckingSession] = useState(true);
   const [notice, setNotice] = useState("");
   const [dark, setDark] = useState(false);
   const [connected, setConnected] = useState(false);
-  const [user, setUser] = useState<{ displayName: string } | null>(null);
+  const [user, setUser] = useState<AuthenticatedUser | null>(null);
   const [viewers, setViewers] = useState<Viewer[]>([]);
   const [members, setMembers] = useState<BoardMember[]>([]);
   const [labels, setLabels] = useState<BoardLabel[]>([]);
@@ -175,11 +169,19 @@ export default function BoardApp() {
     }
   }, []);
 
+  function resetSessionIfExpired(error: unknown): boolean {
+    if (!(error instanceof SessionExpiredError)) return false;
+    setUser(null);
+    setBoard(null);
+    setNotice("Your session expired. Please sign in again.");
+    return true;
+  }
+
   const signIn = useCallback(
     async (event?: React.FormEvent) => {
       event?.preventDefault();
       try {
-        const signedIn = await request<{ displayName: string }>("/auth/login", {
+        const signedIn = await request<AuthenticatedUser>("/auth/login", {
           method: "POST",
           body: JSON.stringify({ email, password }),
         });
@@ -194,8 +196,18 @@ export default function BoardApp() {
   );
 
   useEffect(() => {
-    void signIn();
-  }, [signIn]);
+    void (async () => {
+      try {
+        const signedIn = await request<AuthenticatedUser>("/auth/me");
+        setUser(signedIn);
+        await loadBoard();
+      } catch {
+        // No valid session — show the empty login form.
+      } finally {
+        setCheckingSession(false);
+      }
+    })();
+  }, [loadBoard]);
   useEffect(() => {
     if (!board) return;
     let socket: WebSocket | undefined;
@@ -258,6 +270,7 @@ export default function BoardApp() {
       });
       await loadBoard(board?.id);
     } catch (error) {
+      if (resetSessionIfExpired(error)) return;
       setNotice(
         error instanceof Error ? error.message : "Could not create card",
       );
@@ -289,7 +302,8 @@ export default function BoardApp() {
         body: JSON.stringify({ columnId: target.id, order }),
       });
       await loadBoard(board?.id);
-    } catch {
+    } catch (error) {
+      if (resetSessionIfExpired(error)) return;
       setNotice("Move could not be saved. Restoring the latest board.");
       await loadBoard(board?.id);
     }
@@ -312,6 +326,7 @@ export default function BoardApp() {
       await loadBoard(board.id);
       setSelectedCard(null);
     } catch (error) {
+      if (resetSessionIfExpired(error)) return;
       setCardError(
         error instanceof Error ? error.message : "Could not save card",
       );
@@ -332,6 +347,17 @@ export default function BoardApp() {
     ]);
   }
 
+  async function signOut() {
+    try {
+      await fetch(`${API}/auth/logout`, { method: "POST", credentials: "include" });
+    } finally {
+      setUser(null);
+      setBoard(null);
+      setBoards([]);
+    }
+  }
+
+  if (checkingSession) return null;
   if (!user || !board)
     return (
       <main className="login-screen">
@@ -370,9 +396,6 @@ export default function BoardApp() {
               {notice}
             </p>
           )}
-          <p className="demo-hint">
-            Demo access is prefilled so you can explore right away.
-          </p>
         </div>
       </main>
     );
@@ -411,11 +434,15 @@ export default function BoardApp() {
           onClick={async () => {
             const name = window.prompt("Board name");
             if (name) {
-              await request("/boards", {
-                method: "POST",
-                body: JSON.stringify({ name }),
-              });
-              await loadBoard();
+              try {
+                await request("/boards", {
+                  method: "POST",
+                  body: JSON.stringify({ name }),
+                });
+                await loadBoard();
+              } catch (error) {
+                if (resetSessionIfExpired(error)) return;
+              }
             }
           }}
         >
@@ -438,6 +465,14 @@ export default function BoardApp() {
             ) : (
               <Moon size={16} aria-hidden="true" />
             )}
+          </button>
+          <button
+            title="Sign out"
+            aria-label="Sign out"
+            className="theme-toggle"
+            onClick={() => void signOut()}
+          >
+            <LogOut size={16} aria-hidden="true" />
           </button>
         </div>
       </aside>
@@ -470,6 +505,7 @@ export default function BoardApp() {
                     await navigator.clipboard.writeText(result.inviteUrl);
                     setNotice("Invite link copied.");
                   } catch (error) {
+                    if (resetSessionIfExpired(error)) return;
                     setNotice(
                       error instanceof Error
                         ? error.message
@@ -580,14 +616,21 @@ export default function BoardApp() {
               onClick={async () => {
                 const name = window.prompt("Column name");
                 if (name) {
-                  await request(`/boards/${board.id}/columns`, {
-                    method: "POST",
-                    body: JSON.stringify({
-                      name,
-                      order: (board.columns.at(-1)?.order ?? 0) + 1024,
-                    }),
-                  });
-                  await loadBoard(board.id);
+                  try {
+                    await request(`/boards/${board.id}/columns`, {
+                      method: "POST",
+                      body: JSON.stringify({
+                        name,
+                        order: (board.columns.at(-1)?.order ?? 0) + 1024,
+                      }),
+                    });
+                    await loadBoard(board.id);
+                  } catch (error) {
+                    if (resetSessionIfExpired(error)) return;
+                    setNotice(
+                      error instanceof Error ? error.message : "Could not create column",
+                    );
+                  }
                 }
               }}
             >
