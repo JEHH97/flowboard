@@ -165,21 +165,26 @@ export default function BoardApp() {
   );
 
   const loadBoard = useCallback(async (id?: string) => {
-    const available =
-      await request<Array<{ id: string; name: string; role: string }>>(
-        "/boards",
-      );
-    setBoards(available);
-    if (available.length) {
-      const boardId = id ?? available[0]!.id;
-      const [selected, boardMembers, boardLabels] = await Promise.all([
-        request<Board>(`/boards/${boardId}`),
-        request<BoardMember[]>(`/boards/${boardId}/members`),
-        request<BoardLabel[]>(`/boards/${boardId}/labels`),
-      ]);
-      setBoard(selected);
-      setMembers(boardMembers);
-      setLabels(boardLabels);
+    try {
+      const available =
+        await request<Array<{ id: string; name: string; role: string }>>(
+          "/boards",
+        );
+      setBoards(available);
+      if (available.length) {
+        const boardId = id ?? available[0]!.id;
+        const [selected, boardMembers, boardLabels] = await Promise.all([
+          request<Board>(`/boards/${boardId}`),
+          request<BoardMember[]>(`/boards/${boardId}/members`),
+          request<BoardLabel[]>(`/boards/${boardId}/labels`),
+        ]);
+        setBoard(selected);
+        setMembers(boardMembers);
+        setLabels(boardLabels);
+      }
+    } catch (error) {
+      if (resetSessionIfExpired(error)) return;
+      throw error;
     }
   }, []);
 
@@ -187,6 +192,7 @@ export default function BoardApp() {
     if (!(error instanceof SessionExpiredError)) return false;
     setUser(null);
     setBoard(null);
+    setPassword("");
     setNotice("Your session expired. Please sign in again.");
     return true;
   }
@@ -433,14 +439,19 @@ export default function BoardApp() {
 
   async function createLabel(name: string, color: string) {
     if (!board) return;
-    const created = await request<BoardLabel>(`/boards/${board.id}/labels`, {
-      method: "POST",
-      body: JSON.stringify({ name, color }),
-    });
-    setLabels((current) => [
-      ...current.filter((label) => label.id !== created.id),
-      created,
-    ]);
+    try {
+      const created = await request<BoardLabel>(`/boards/${board.id}/labels`, {
+        method: "POST",
+        body: JSON.stringify({ name, color }),
+      });
+      setLabels((current) => [
+        ...current.filter((label) => label.id !== created.id),
+        created,
+      ]);
+    } catch (error) {
+      if (resetSessionIfExpired(error)) return;
+      throw error;
+    }
   }
 
   async function signOut() {
@@ -453,6 +464,8 @@ export default function BoardApp() {
       setUser(null);
       setBoard(null);
       setBoards([]);
+      setPassword("");
+      setNotice("");
     }
   }
 

@@ -25,4 +25,5 @@ test("shows an error for wrong credentials, signs in, persists across reload, an
 
   await page.getByRole("button", { name: "Sign out" }).click();
   await expect(page.getByLabel("Email")).toBeVisible();
+  await expect(page.getByLabel("Password")).toHaveValue("");
 });

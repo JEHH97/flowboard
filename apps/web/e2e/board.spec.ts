@@ -193,6 +193,21 @@ test("deletes a card, a column, and a board", async ({ page }) => {
   await expect(page.getByText("Temporary card")).toBeVisible({
     timeout: 10000,
   });
+
+  // Exercise the card's own delete UI directly (two-step inline confirm, no native dialog).
+  await page.getByRole("button", { name: "Open card: Temporary card" }).click();
+  const cardDialog = page.getByRole("dialog", { name: "Edit card" });
+  await expect(cardDialog).toBeVisible();
+  await page.getByRole("button", { name: "Delete card" }).click();
+  await page.getByRole("button", { name: "Confirm delete" }).click();
+  await expect(cardDialog).toBeHidden();
+  await expect(page.getByText("Temporary card")).toHaveCount(0);
+
+  // A column with a card still cascades on delete.
+  await page.getByRole("button", { name: /Add card to Temp Column/ }).click();
+  await page.getByPlaceholder("Card title").fill("Cascade card");
+  await page.getByPlaceholder("Card title").press("Enter");
+  await expect(page.getByText("Cascade card")).toBeVisible({ timeout: 10000 });
   await page.getByRole("button", { name: "Delete Temp Column" }).click();
   await expect(
     page.getByRole("button", { name: "Confirm delete Temp Column" }),
@@ -204,7 +219,7 @@ test("deletes a card, a column, and a board", async ({ page }) => {
     0,
     { timeout: 10000 },
   );
-  await expect(page.getByText("Temporary card")).toHaveCount(0);
+  await expect(page.getByText("Cascade card")).toHaveCount(0);
 
   // Deleting the board you're currently viewing must land you back on a
   // remaining board, not a blank state; the only board can't be deleted.

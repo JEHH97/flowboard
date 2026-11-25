@@ -24,6 +24,13 @@ describe("api-client request()", () => {
     ).resolves.toBeUndefined();
   });
 
+  it("omits content-type for a bodyless DELETE", async () => {
+    const fetcher = vi.fn<typeof fetch>(async () => jsonResponse(204));
+    await request("/boards/1", { method: "DELETE" }, fetcher);
+    const [, init] = fetcher.mock.calls[0]!;
+    expect(new Headers(init?.headers).has("content-type")).toBe(false);
+  });
+
   it("throws the server's error message on a non-401 failure", async () => {
     const fetcher = vi.fn<typeof fetch>(async () =>
       jsonResponse(400, { error: "Invalid board" }),
