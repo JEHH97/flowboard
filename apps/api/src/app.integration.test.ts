@@ -408,6 +408,27 @@ suite("API integration with PostgreSQL", () => {
     ]);
   }, 30000);
 
+  it("returns the signed-in user's identity from /auth/me", async () => {
+    const identity = `me-${crypto.randomUUID()}@flowboard.dev`;
+    const registration = await app.inject({
+      method: "POST",
+      url: "/auth/register",
+      payload: { email: identity, password: "safe-test-password", displayName: "Me Member" },
+    });
+    const rawCookies = registration.headers["set-cookie"];
+    const meCookie = (Array.isArray(rawCookies) ? rawCookies : rawCookies ? [rawCookies] : [])
+      .map((value) => value.split(";")[0])
+      .join("; ");
+    const me = await app.inject({ method: "GET", url: "/auth/me", headers: { cookie: meCookie } });
+    expect(me.statusCode).toBe(200);
+    expect(me.json()).toMatchObject({ email: identity, displayName: "Me Member" });
+  });
+
+  it("rejects /auth/me without a session", async () => {
+    const response = await app.inject({ method: "GET", url: "/auth/me" });
+    expect(response.statusCode).toBe(401);
+  });
+
   it("updates a seeded user's password without creating a duplicate", async () => {
     const identity = `seed-${crypto.randomUUID()}@flowboard.dev`;
     try {
