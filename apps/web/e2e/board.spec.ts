@@ -122,7 +122,7 @@ test("deletes a card, a column, and a board", async ({ page }) => {
   await page.getByRole("button", { name: /Open your workspace/ }).click();
   await expect(page.getByRole("heading", { name: "Product Launch" })).toBeVisible({ timeout: 30000 });
 
-  // Clean up any leftover "Temp Column" instances from previous test runs
+  // Clean up any leftover test data from previous runs
   const cookies = await page.context().cookies("http://localhost:3001");
   const cookieHeader = cookies
     .map(({ name, value }) => `${name}=${value}`)
@@ -131,11 +131,12 @@ test("deletes a card, a column, and a board", async ({ page }) => {
     "http://localhost:3001/api/boards",
     { headers: { cookie: cookieHeader } },
   );
-  const boards = (await boardsResponse.json()) as Array<{
+  const boardsList = (await boardsResponse.json()) as Array<{
     id: string;
     name: string;
   }>;
-  const demoBoard = boards.find((board) => board.name === "Product Launch");
+  // Clean up old Temp Columns from Product Launch
+  const demoBoard = boardsList.find((board) => board.name === "Product Launch");
   if (demoBoard) {
     const boardResponse = await page.request.get(
       `http://localhost:3001/api/boards/${demoBoard.id}`,
@@ -151,6 +152,15 @@ test("deletes a card, a column, and a board", async ({ page }) => {
           { headers: { cookie: cookieHeader } },
         );
       }
+    }
+  }
+  // Clean up old Scratch boards
+  for (const board of boardsList) {
+    if (board.name === "Scratch board") {
+      await page.request.delete(
+        `http://localhost:3001/api/boards/${board.id}`,
+        { headers: { cookie: cookieHeader } },
+      );
     }
   }
 
@@ -170,9 +180,6 @@ test("deletes a card, a column, and a board", async ({ page }) => {
   await page.getByRole("button", { name: "Delete Temp Column" }).click();
   await expect(page.getByRole("button", { name: "Confirm delete Temp Column" })).toBeVisible();
   await page.getByRole("button", { name: "Confirm delete Temp Column" }).click();
-  // After delete button is clicked, wait for the column to disappear from the page
-  // The loadBoard call in deleteColumn should trigger a full reload
-  await page.waitForTimeout(1000);  // Let the delete request complete
   await expect(page.getByRole("heading", { name: "Temp Column" })).toHaveCount(0, { timeout: 10000 });
   await expect(page.getByText("Temporary card")).toHaveCount(0);
 

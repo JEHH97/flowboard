@@ -55,7 +55,10 @@ export async function buildApp(): Promise<FastifyInstance> {
     cookie: { cookieName: "access_token", signed: false },
     sign: { expiresIn: "15m" },
   });
-  await app.register(rateLimit, { max: 100, timeWindow: "1 minute" });
+  await app.register(rateLimit, {
+    max: Number(process.env.RATE_LIMIT_MAX) || 100,
+    timeWindow: "1 minute",
+  });
   await app.register(websocket);
 
   const authenticate = {
