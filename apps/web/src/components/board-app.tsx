@@ -33,6 +33,7 @@ import CardDetailsDialog, {
   type BoardLabel,
   type BoardMember,
 } from "./card-details-dialog";
+import InlineCreateField from "./inline-create-field";
 import { API, request, SessionExpiredError } from "../lib/api-client";
 
 type AuthenticatedUser = {
@@ -148,6 +149,9 @@ export default function BoardApp() {
   const [selectedCard, setSelectedCard] = useState<Card | null>(null);
   const [savingCard, setSavingCard] = useState(false);
   const [cardError, setCardError] = useState("");
+  const [creatingBoard, setCreatingBoard] = useState(false);
+  const [creatingColumn, setCreatingColumn] = useState(false);
+  const [creatingCardFor, setCreatingCardFor] = useState<string | null>(null);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
   );
@@ -260,20 +264,43 @@ export default function BoardApp() {
   const activeViewers = viewers.length
     ? viewers
     : [{ userId: "current-user", displayName: user?.displayName ?? "Member" }];
-  async function createCard(column: Column) {
-    const title = window.prompt("What needs to get done?");
-    if (!title?.trim()) return;
+  async function createCard(column: Column, title: string) {
     try {
       await request(`/boards/${board?.id}/cards`, {
         method: "POST",
         body: JSON.stringify({ title, columnId: column.id, labels: [] }),
       });
+      setCreatingCardFor(null);
       await loadBoard(board?.id);
     } catch (error) {
       if (resetSessionIfExpired(error)) return;
       setNotice(
         error instanceof Error ? error.message : "Could not create card",
       );
+    }
+  }
+  async function createBoard(name: string) {
+    try {
+      await request("/boards", { method: "POST", body: JSON.stringify({ name }) });
+      setCreatingBoard(false);
+      await loadBoard();
+    } catch (error) {
+      if (resetSessionIfExpired(error)) return;
+      setNotice(error instanceof Error ? error.message : "Could not create board");
+    }
+  }
+  async function createColumn(name: string) {
+    if (!board) return;
+    try {
+      await request(`/boards/${board.id}/columns`, {
+        method: "POST",
+        body: JSON.stringify({ name, order: (board.columns.at(-1)?.order ?? 0) + 1024 }),
+      });
+      setCreatingColumn(false);
+      await loadBoard(board.id);
+    } catch (error) {
+      if (resetSessionIfExpired(error)) return;
+      setNotice(error instanceof Error ? error.message : "Could not create column");
     }
   }
   async function onDragEnd(event: DragEndEvent) {
@@ -429,28 +456,20 @@ export default function BoardApp() {
             {item.name}
           </button>
         ))}
-        <button
-          className="add-board"
-          onClick={async () => {
-            const name = window.prompt("Board name");
-            if (name) {
-              try {
-                await request("/boards", {
-                  method: "POST",
-                  body: JSON.stringify({ name }),
-                });
-                await loadBoard();
-              } catch (error) {
-                if (resetSessionIfExpired(error)) return;
-                setNotice(
-                  error instanceof Error ? error.message : "Could not create board",
-                );
-              }
-            }
-          }}
-        >
-          <Plus size={14} aria-hidden="true" /> New board
-        </button>
+        {creatingBoard ? (
+          <InlineCreateField
+            placeholder="Board name"
+            onSubmit={createBoard}
+            onCancel={() => setCreatingBoard(false)}
+          />
+        ) : (
+          <button
+            className="add-board"
+            onClick={() => setCreatingBoard(true)}
+          >
+            <Plus size={14} aria-hidden="true" /> New board
+          </button>
+        )}
         <div className="sidebar-bottom">
           <div className="avatar">{user.displayName[0]}</div>
           <div>
@@ -580,7 +599,7 @@ export default function BoardApp() {
                     aria-label={`Add card to ${column.name}`}
                     className="column-menu"
                     disabled={board.role === "viewer"}
-                    onClick={() => void createCard(column)}
+                    onClick={() => setCreatingCardFor(column.id)}
                   >
                     <Plus size={14} aria-hidden="true" />
                   </button>
@@ -604,41 +623,38 @@ export default function BoardApp() {
                     ))}
                   </div>
                 </SortableContext>
-                <button
-                  className="add-card"
-                  disabled={board.role === "viewer"}
-                  onClick={() => void createCard(column)}
-                >
-                  <Plus size={13} aria-hidden="true" /> Add a card
-                </button>
+                {creatingCardFor === column.id ? (
+                  <InlineCreateField
+                    placeholder="Card title"
+                    onSubmit={(title) => void createCard(column, title)}
+                    onCancel={() => setCreatingCardFor(null)}
+                  />
+                ) : (
+                  <button
+                    className="add-card"
+                    disabled={board.role === "viewer"}
+                    onClick={() => setCreatingCardFor(column.id)}
+                  >
+                    <Plus size={13} aria-hidden="true" /> Add a card
+                  </button>
+                )}
               </section>
             ))}
-            <button
-              className="new-column"
-              disabled={board.role === "viewer"}
-              onClick={async () => {
-                const name = window.prompt("Column name");
-                if (name) {
-                  try {
-                    await request(`/boards/${board.id}/columns`, {
-                      method: "POST",
-                      body: JSON.stringify({
-                        name,
-                        order: (board.columns.at(-1)?.order ?? 0) + 1024,
-                      }),
-                    });
-                    await loadBoard(board.id);
-                  } catch (error) {
-                    if (resetSessionIfExpired(error)) return;
-                    setNotice(
-                      error instanceof Error ? error.message : "Could not create column",
-                    );
-                  }
-                }
-              }}
-            >
-              <Plus size={14} aria-hidden="true" /> Add column
-            </button>
+            {creatingColumn ? (
+              <InlineCreateField
+                placeholder="Column name"
+                onSubmit={createColumn}
+                onCancel={() => setCreatingColumn(false)}
+              />
+            ) : (
+              <button
+                className="new-column"
+                disabled={board.role === "viewer"}
+                onClick={() => setCreatingColumn(true)}
+              >
+                <Plus size={14} aria-hidden="true" /> Add column
+              </button>
+            )}
           </div>
         </DndContext>
         <footer className="board-footer">

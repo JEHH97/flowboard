@@ -6,10 +6,6 @@ test("sign in, create a card, sync to a second client, and capture themes", asyn
 }) => {
   const second = await browser.newPage();
   const cardTitle = "Review the onboarding flow";
-  const dialogHandler = (dialog: {
-    accept: (value?: string) => Promise<void>;
-  }) => dialog.accept(cardTitle);
-  page.on("dialog", dialogHandler);
   await page.goto("/");
   await page.getByLabel("Email").fill("demo@flowboard.dev");
   await page.getByLabel("Password").fill(process.env.DEMO_PASSWORD ?? "flowboard-demo-password");
@@ -69,7 +65,9 @@ test("sign in, create a card, sync to a second client, and capture themes", asyn
       );
     }
   }
-  await page.getByRole("button", { name: /Add card to Ideas/ }).click();
+  await page.getByRole("button", { name: "Add a card" }).first().click();
+  await page.getByPlaceholder("Card title").fill(cardTitle);
+  await page.getByPlaceholder("Card title").press("Enter");
   await expect(second.getByText(cardTitle)).toBeVisible({
     timeout: 15000,
   });

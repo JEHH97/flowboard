@@ -383,6 +383,18 @@ button {
   padding: 12px 3px 4px;
   font-size: 11px;
 }
+.inline-create-field {
+  width: 100%;
+}
+.inline-create-field input {
+  width: 100%;
+  border: 1px solid #dce5dd;
+  border-radius: 7px;
+  padding: 8px 10px;
+  font-size: 12px;
+  font-family: inherit;
+  color: #34433a;
+}
 .new-column {
   border: 1px dashed #d9e0db;
   border-radius: 8px;
