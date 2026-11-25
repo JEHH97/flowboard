@@ -16,10 +16,17 @@ export async function request<T>(
   fetcher: typeof fetch = fetch,
   isRetry = false,
 ): Promise<T> {
+  const headers: Record<string, string> =
+    init?.headers instanceof Headers
+      ? Object.fromEntries(init.headers.entries())
+      : (init?.headers as Record<string, string>) || {};
+  if (init?.method !== "DELETE" || init?.body) {
+    headers["content-type"] = "application/json";
+  }
   const response = await fetcher(`${API}${path}`, {
     ...init,
     credentials: "include",
-    headers: { "content-type": "application/json", ...init?.headers },
+    headers,
   });
   if (response.status === 401 && path !== "/auth/login") {
     if (isRetry) throw new SessionExpiredError("Session expired");

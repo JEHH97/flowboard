@@ -874,3 +874,40 @@ button {
 .dark .due-date.overdue {
   color: #ff9a8f !important;
 }
+.dialog-actions-spacer {
+  flex: 1;
+}
+.danger-button {
+  border: 1px solid #e3b8b2;
+  border-radius: 7px;
+  padding: 9px 12px;
+  background: #fff;
+  color: #b2463f;
+  font-size: 11px;
+  font-weight: 650;
+}
+.danger-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+.dialog-confirm-prompt {
+  font-size: 11px;
+  color: #46564b;
+  margin-right: auto;
+}
+.confirm-delete {
+  display: inline-flex;
+  gap: 4px;
+}
+.icon-button.danger {
+  color: #b2463f;
+  border-color: #e3b8b2;
+}
+.board-link-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.board-link-row .board-link {
+  flex: 1;
+}

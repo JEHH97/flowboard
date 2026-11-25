@@ -114,3 +114,78 @@ test("sign in, create a card, sync to a second client, and capture themes", asyn
   await expect(page.getByText("Launch with confidence")).toBeVisible();
   await second.close();
 });
+
+test("deletes a card, a column, and a board", async ({ page }) => {
+  await page.goto("/");
+  await page.getByLabel("Email").fill("demo@flowboard.dev");
+  await page.getByLabel("Password").fill(process.env.DEMO_PASSWORD ?? "flowboard-demo-password");
+  await page.getByRole("button", { name: /Open your workspace/ }).click();
+  await expect(page.getByRole("heading", { name: "Product Launch" })).toBeVisible({ timeout: 30000 });
+
+  // Clean up any leftover "Temp Column" instances from previous test runs
+  const cookies = await page.context().cookies("http://localhost:3001");
+  const cookieHeader = cookies
+    .map(({ name, value }) => `${name}=${value}`)
+    .join("; ");
+  const boardsResponse = await page.request.get(
+    "http://localhost:3001/api/boards",
+    { headers: { cookie: cookieHeader } },
+  );
+  const boards = (await boardsResponse.json()) as Array<{
+    id: string;
+    name: string;
+  }>;
+  const demoBoard = boards.find((board) => board.name === "Product Launch");
+  if (demoBoard) {
+    const boardResponse = await page.request.get(
+      `http://localhost:3001/api/boards/${demoBoard.id}`,
+      { headers: { cookie: cookieHeader } },
+    );
+    const boardData = (await boardResponse.json()) as {
+      columns: Array<{ id: string; name: string; cards: Array<{ id: string }> }>;
+    };
+    for (const column of boardData.columns) {
+      if (column.name === "Temp Column") {
+        await page.request.delete(
+          `http://localhost:3001/api/boards/${demoBoard.id}/columns/${column.id}`,
+          { headers: { cookie: cookieHeader } },
+        );
+      }
+    }
+  }
+
+  // A column with a card cascades on delete. Named to not be a substring
+  // of any other accessible name used in this test (Playwright's `name`
+  // matching is substring-based unless `exact: true` is passed).
+  await page.getByRole("button", { name: /Add column/ }).click();
+  await expect(page.getByPlaceholder("Column name")).toBeVisible();
+  await page.getByPlaceholder("Column name").fill("Temp Column");
+  await page.getByPlaceholder("Column name").press("Enter");
+  await expect(page.getByRole("heading", { name: "Temp Column" })).toBeVisible({ timeout: 10000 });
+  await page.getByRole("button", { name: /Add card to Temp Column/ }).click();
+  await expect(page.getByPlaceholder("Card title")).toBeVisible();
+  await page.getByPlaceholder("Card title").fill("Temporary card");
+  await page.getByPlaceholder("Card title").press("Enter");
+  await expect(page.getByText("Temporary card")).toBeVisible({ timeout: 10000 });
+  await page.getByRole("button", { name: "Delete Temp Column" }).click();
+  await expect(page.getByRole("button", { name: "Confirm delete Temp Column" })).toBeVisible();
+  await page.getByRole("button", { name: "Confirm delete Temp Column" }).click();
+  // After delete button is clicked, wait for the column to disappear from the page
+  // The loadBoard call in deleteColumn should trigger a full reload
+  await page.waitForTimeout(1000);  // Let the delete request complete
+  await expect(page.getByRole("heading", { name: "Temp Column" })).toHaveCount(0, { timeout: 10000 });
+  await expect(page.getByText("Temporary card")).toHaveCount(0);
+
+  // Deleting the board you're currently viewing must land you back on a
+  // remaining board, not a blank state; the only board can't be deleted.
+  await page.getByRole("button", { name: /New board/ }).click();
+  await page.getByPlaceholder("Board name").fill("Scratch board");
+  await page.getByPlaceholder("Board name").press("Enter");
+  await page.getByRole("button", { name: "Scratch board", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Scratch board" })).toBeVisible();
+  await page.getByRole("button", { name: "Delete Scratch board" }).click();
+  await page.getByRole("button", { name: "Confirm delete Scratch board" }).click();
+  await expect(page.getByText("Scratch board")).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Product Launch" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Delete Product Launch" })).toHaveCount(0);
+});

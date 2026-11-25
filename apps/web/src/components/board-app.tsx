@@ -18,6 +18,7 @@ import { boardEventSchema, isOverdue } from "@flowboard/shared";
 import {
   ArrowRight,
   CalendarDays,
+  Check,
   ChevronDown,
   LayoutDashboard,
   ListFilter,
@@ -28,6 +29,8 @@ import {
   Plus,
   Share2,
   Sun,
+  Trash2,
+  X,
 } from "lucide-react";
 import CardDetailsDialog, {
   type BoardLabel,
@@ -135,7 +138,7 @@ function CardItem({
 
 export default function BoardApp() {
   const [board, setBoard] = useState<Board | null>(null);
-  const [boards, setBoards] = useState<Array<{ id: string; name: string }>>([]);
+  const [boards, setBoards] = useState<Array<{ id: string; name: string; role: string }>>([]);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [checkingSession, setCheckingSession] = useState(true);
@@ -152,13 +155,16 @@ export default function BoardApp() {
   const [creatingBoard, setCreatingBoard] = useState(false);
   const [creatingColumn, setCreatingColumn] = useState(false);
   const [creatingCardFor, setCreatingCardFor] = useState<string | null>(null);
+  const [deletingCard, setDeletingCard] = useState(false);
+  const [deletingColumnId, setDeletingColumnId] = useState<string | null>(null);
+  const [deletingBoardId, setDeletingBoardId] = useState<string | null>(null);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
   );
 
   const loadBoard = useCallback(async (id?: string) => {
     const available =
-      await request<Array<{ id: string; name: string }>>("/boards");
+      await request<Array<{ id: string; name: string; role: string }>>("/boards");
     setBoards(available);
     if (available.length) {
       const boardId = id ?? available[0]!.id;
@@ -362,6 +368,45 @@ export default function BoardApp() {
     }
   }
 
+  async function deleteCard() {
+    if (!board || !selectedCard) return;
+    setDeletingCard(true);
+    setCardError("");
+    try {
+      await request(`/boards/${board.id}/cards/${selectedCard.id}`, { method: "DELETE" });
+      await loadBoard(board.id);
+      setSelectedCard(null);
+    } catch (error) {
+      if (resetSessionIfExpired(error)) return;
+      setCardError(error instanceof Error ? error.message : "Could not delete card");
+    } finally {
+      setDeletingCard(false);
+    }
+  }
+
+  async function deleteColumn(columnId: string) {
+    if (!board) return;
+    try {
+      await request(`/boards/${board.id}/columns/${columnId}`, { method: "DELETE" });
+      setDeletingColumnId(null);
+      await loadBoard(board.id);
+    } catch (error) {
+      if (resetSessionIfExpired(error)) return;
+      setNotice(error instanceof Error ? error.message : "Could not delete column");
+    }
+  }
+
+  async function deleteBoard(boardId: string) {
+    try {
+      await request(`/boards/${boardId}`, { method: "DELETE" });
+      setDeletingBoardId(null);
+      await loadBoard(board?.id === boardId ? undefined : board?.id);
+    } catch (error) {
+      if (resetSessionIfExpired(error)) return;
+      setNotice(error instanceof Error ? error.message : "Could not delete board");
+    }
+  }
+
   async function createLabel(name: string, color: string) {
     if (!board) return;
     const created = await request<BoardLabel>(`/boards/${board.id}/labels`, {
@@ -443,18 +488,47 @@ export default function BoardApp() {
         </button>
         <p className="side-label boards-label">YOUR BOARDS</p>
         {boards.map((item) => (
-          <button
-            key={item.id}
-            className={`board-link ${board.id === item.id ? "selected" : ""}`}
-            onClick={() => void loadBoard(item.id)}
-          >
-            <LayoutDashboard
-              className="board-dot"
-              size={15}
-              aria-hidden="true"
-            />
-            {item.name}
-          </button>
+          <div className="board-link-row" key={item.id}>
+            <button
+              className={`board-link ${board.id === item.id ? "selected" : ""}`}
+              onClick={() => void loadBoard(item.id)}
+            >
+              <LayoutDashboard
+                className="board-dot"
+                size={15}
+                aria-hidden="true"
+              />
+              {item.name}
+            </button>
+            {item.role !== "viewer" &&
+              boards.length > 1 &&
+              (deletingBoardId === item.id ? (
+                <span className="confirm-delete">
+                  <button
+                    aria-label={`Cancel deleting ${item.name}`}
+                    className="icon-button"
+                    onClick={() => setDeletingBoardId(null)}
+                  >
+                    <X size={12} aria-hidden="true" />
+                  </button>
+                  <button
+                    aria-label={`Confirm delete ${item.name}`}
+                    className="icon-button danger"
+                    onClick={() => void deleteBoard(item.id)}
+                  >
+                    <Check size={12} aria-hidden="true" />
+                  </button>
+                </span>
+              ) : (
+                <button
+                  aria-label={`Delete ${item.name}`}
+                  className="icon-button"
+                  onClick={() => setDeletingBoardId(item.id)}
+                >
+                  <Trash2 size={12} aria-hidden="true" />
+                </button>
+              ))}
+          </div>
         ))}
         {creatingBoard ? (
           <InlineCreateField
@@ -603,6 +677,33 @@ export default function BoardApp() {
                   >
                     <Plus size={14} aria-hidden="true" />
                   </button>
+                  {board.role !== "viewer" &&
+                    (deletingColumnId === column.id ? (
+                      <span className="confirm-delete">
+                        <button
+                          aria-label={`Cancel deleting ${column.name}`}
+                          className="icon-button"
+                          onClick={() => setDeletingColumnId(null)}
+                        >
+                          <X size={13} aria-hidden="true" />
+                        </button>
+                        <button
+                          aria-label={`Confirm delete ${column.name}`}
+                          className="icon-button danger"
+                          onClick={() => void deleteColumn(column.id)}
+                        >
+                          <Check size={13} aria-hidden="true" />
+                        </button>
+                      </span>
+                    ) : (
+                      <button
+                        aria-label={`Delete ${column.name}`}
+                        className="column-menu"
+                        onClick={() => setDeletingColumnId(column.id)}
+                      >
+                        <Trash2 size={13} aria-hidden="true" />
+                      </button>
+                    ))}
                 </header>
                 <SortableContext
                   items={column.cards.map((card) => card.id)}
@@ -673,6 +774,8 @@ export default function BoardApp() {
         onClose={() => setSelectedCard(null)}
         onSave={saveCard}
         onCreateLabel={createLabel}
+        onDelete={deleteCard}
+        deleting={deletingCard}
       />
     </main>
   );

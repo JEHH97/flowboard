@@ -45,6 +45,8 @@ export default function CardDetailsDialog({
   onClose,
   onSave,
   onCreateLabel,
+  onDelete,
+  deleting,
 }: {
   card: EditableCard | null;
   members: BoardMember[];
@@ -56,6 +58,8 @@ export default function CardDetailsDialog({
   onClose: () => void;
   onSave: (changes: CardChanges) => Promise<void>;
   onCreateLabel: (name: string, color: string) => Promise<void>;
+  onDelete: () => Promise<void>;
+  deleting: boolean;
 }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const titleRef = useRef<HTMLInputElement>(null);
@@ -68,6 +72,7 @@ export default function CardDetailsDialog({
   const [newColor, setNewColor] = useState("#7aa58a");
   const [creatingLabel, setCreatingLabel] = useState(false);
   const [labelError, setLabelError] = useState("");
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -87,6 +92,7 @@ export default function CardDetailsDialog({
     setSelectedLabels(card.labels);
     setDueDate(toDateInputValue(card.dueDate));
     setLabelError("");
+    setConfirmingDelete(false);
   }, [card?.id]);
 
   if (!card) return null;
@@ -313,15 +319,33 @@ export default function CardDetailsDialog({
           </p>
         )}
         <footer className="dialog-actions">
+          {!readOnly &&
+            (confirmingDelete ? (
+              <>
+                <span className="dialog-confirm-prompt">Delete this card?</span>
+                <button className="secondary-button" type="button" onClick={() => setConfirmingDelete(false)}>
+                  Cancel
+                </button>
+                <button
+                  className="danger-button"
+                  type="button"
+                  disabled={deleting}
+                  onClick={() => void onDelete()}
+                >
+                  {deleting ? "Deleting…" : "Confirm delete"}
+                </button>
+              </>
+            ) : (
+              <button className="danger-button" type="button" onClick={() => setConfirmingDelete(true)}>
+                Delete card
+              </button>
+            ))}
+          <span className="dialog-actions-spacer" />
           <button className="secondary-button" type="button" onClick={onClose}>
             Close
           </button>
-          {!readOnly && (
-            <button
-              className="primary"
-              type="submit"
-              disabled={saving || !title.trim()}
-            >
+          {!readOnly && !confirmingDelete && (
+            <button className="primary" type="submit" disabled={saving || !title.trim()}>
               {saving ? "Saving…" : "Save changes"}
             </button>
           )}
